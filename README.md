@@ -10,8 +10,8 @@ analysis design is created and run for each covariate.
 Test type: one sample t-tests
 
 -------------------------------------------------------------------------
-Ruben van den Bosch
-Donders Institute for Brain, Cognition and Behaviour
-Radboud University
-Nijmegen, The Netherlands
+Ruben van den Bosch  
+Donders Institute for Brain, Cognition and Behaviour  
+Radboud University  
+Nijmegen, The Netherlands  
 April 2019
