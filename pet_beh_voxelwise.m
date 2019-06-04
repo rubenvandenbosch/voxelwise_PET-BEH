@@ -306,6 +306,21 @@ for icov = 1:numel(covs)
                 end
             end
 
+            % Create combined binary mask of significant clusters of both
+            % the positive and negative covariate correlation contrast
+            % -------------------------------------------------------------
+            jobNr = numel(jobs) + 1;
+            jobs{jobNr}.spm.util.imcalc.input = cellstr(strvcat(fullfile(outDir,['spmT_0001_' jobs{2}.spm.stats.results.export{1}.binary.basename '.nii']), ...
+                                                                fullfile(outDir,['spmT_0002_' jobs{3}.spm.stats.results.export{1}.binary.basename '.nii'])));
+            jobs{jobNr}.spm.util.imcalc.output = ['combPosNeg_' jobs{2}.spm.stats.results.export{1}.binary.basename];
+            jobs{jobNr}.spm.util.imcalc.outdir = cellstr(outDir);
+            jobs{jobNr}.spm.util.imcalc.expression = 'i1 | i2';
+            jobs{jobNr}.spm.util.imcalc.var = struct('name', {}, 'value', {});
+            jobs{jobNr}.spm.util.imcalc.options.dmtx = 0;
+            jobs{jobNr}.spm.util.imcalc.options.mask = 0;
+            jobs{jobNr}.spm.util.imcalc.options.interp = 0;
+            jobs{jobNr}.spm.util.imcalc.options.dtype = 2;
+
             % Save and run job
             % =============================================================
             jobName = 'Contrast_and_ResultsExport';
