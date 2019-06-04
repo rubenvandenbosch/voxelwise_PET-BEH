@@ -10,7 +10,12 @@
 % Test type: one sample t-tests
 % 
 % -------------------------------------------------------------------------
-% 
+% Ruben van den Bosch
+% Donders Institute for Brain, Cognition and Behaviour
+% Radboud University
+% Nijmegen, The Netherlands
+% April 2019
+%
 
 % USER INPUT
 % =========================================================================
@@ -232,7 +237,7 @@ for icov = 1:numel(covs)
         % are requested
         for ip = 1:numel(settings.results.threshold)
         
-            % Create Contrast
+            % Create Contrasts
             % -------------------------------------------------------------
             % Define SPM
             outDir = fullfile(settings.io.derivBEHdir, 'pet', covname);
@@ -241,54 +246,71 @@ for icov = 1:numel(covs)
             
             % Define covariate contrast
             jobs{1}.spm.stats.con.consess{1}.tcon.name     = covname;
-            jobs{1}.spm.stats.con.consess{1}.tcon.weights  = zeros(1,numel(covs)+1);
             jobs{1}.spm.stats.con.consess{1}.tcon.weights  = [0 1];
             jobs{1}.spm.stats.con.consess{1}.tcon.sessrep  = 'none';
             
+            % Define negative covariate contrast
+            jobs{1}.spm.stats.con.consess{2}.tcon.name     = ['negative_' covname];
+            jobs{1}.spm.stats.con.consess{2}.tcon.weights  = [0 -1];
+            jobs{1}.spm.stats.con.consess{2}.tcon.sessrep  = 'none';
+                        
             % Delete existing contrasts
             jobs{1}.spm.stats.con.delete = 1;
 
             % Export Result
             % -------------------------------------------------------------
-            % Path to SPM, and empty titlestring
-            jobs{2}.spm.stats.results.spmmat = cellstr(SPMmat);
-            jobs{2}.spm.stats.results.conspec.titlestr = '';
+            % Loop twice, to export both positive and negative covariate
+            % correlation contrast
+            
+            for icon = 1:2
+                % Path to SPM, and empty titlestring
+                jobs{icon+1}.spm.stats.results.spmmat = cellstr(SPMmat);
+                jobs{icon+1}.spm.stats.results.conspec.titlestr = '';
 
-            % Contrast index
-            jobs{2}.spm.stats.results.conspec.contrasts = 1;
-            
-            % Threshold type, value and min cluster size
-            if strcmpi(settings.results.thresholdType,'uncorrected')
-                jobs{2}.spm.stats.results.conspec.threshdesc = 'none';
-            elseif strcmpi(settings.results.thresholdType,'fwe')
-                jobs{2}.spm.stats.results.conspec.threshdesc = 'fwe';
+                % Contrast index
+                jobs{icon+1}.spm.stats.results.conspec.contrasts = icon;
+
+                % Threshold type, value and min cluster size
+                if strcmpi(settings.results.thresholdType,'uncorrected')
+                    jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'none';
+                elseif strcmpi(settings.results.thresholdType,'fwe')
+                    jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'fwe';
+                end
+                jobs{icon+1}.spm.stats.results.conspec.thresh = settings.results.threshold{ip};
+                jobs{icon+1}.spm.stats.results.conspec.extent = 0;
+
+                % Export as binary. Define basename. Use inclusive mask if 
+                % applicable
+                % .........................................................
+                jobs{icon+1}.spm.stats.results.units = 1;
+
+                % Get p as string for use in basename
+                p = regexp(num2str(settings.results.threshold{ip}), '\.', 'split');
+                p = p{2};
+
+                if ~settings.results.mask.use
+                    jobs{icon+1}.spm.stats.results.conspec.mask.none = 1;
+                    if icon == 1
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('sigClust_p%s_%s_binary',p,settings.results.thresholdType);
+                    elseif icon == 2
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_sigClust_p%s_%s_binary',p,settings.results.thresholdType);
+                    end
+                else
+                    jobs{icon+1}.spm.stats.results.conspec.mask.image.name  = cellstr(settings.results.mask.image);
+                    jobs{icon+1}.spm.stats.results.conspec.mask.image.mtype = 0;
+                    if icon == 1
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('sigClust_p%s_%s_binary_inclMask',p,settings.results.thresholdType);
+                    elseif icon == 2
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_sigClust_p%s_%s_binary_inclMask',p,settings.results.thresholdType);
+                    end
+                end
             end
-            jobs{2}.spm.stats.results.conspec.thresh = settings.results.threshold{ip};
-            jobs{2}.spm.stats.results.conspec.extent = 0;
-            
-            % Export as binary. Define basename. Use inclusive mask if 
-            % applicable
-            % .............................................................
-            jobs{2}.spm.stats.results.units = 1;
-            
-            % Get p as string for use in basename
-            p = regexp(num2str(settings.results.threshold{ip}), '\.', 'split');
-            p = p{2};
-            
-            if ~settings.results.mask.use
-                jobs{2}.spm.stats.results.conspec.mask.none = 1;
-                jobs{2}.spm.stats.results.export{1}.binary.basename = sprintf('sigClust_p%s_%s_binary',p,settings.results.thresholdType);
-            else
-                jobs{2}.spm.stats.results.conspec.mask.image.name  = cellstr(settings.results.mask.image);
-                jobs{2}.spm.stats.results.conspec.mask.image.mtype = 0;
-                jobs{2}.spm.stats.results.export{1}.binary.basename = sprintf('sigClust_p%s_%s_binary_inclMask',p,settings.results.thresholdType);
-            end
-            
+
             % Save and run job
             % =============================================================
             jobName = 'Contrast_and_ResultsExport';
             jobFile = fullfile(dirs.jobs,[jobName,'_',covname,'_',datestr(now,'yyyymmddTHHMMSS'),'.m']);
-            
+
             % Initialise job
             jobId = cfg_util('initjob', jobs);
 
