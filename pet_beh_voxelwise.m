@@ -236,6 +236,8 @@ for icov = 1:numel(covs)
         % Loop in case multiple results exports at different p-thresholds
         % are requested
         for ip = 1:numel(settings.results.threshold)
+            % Prevent erroneous accumulation of jobs
+            clear jobs
         
             % Create Contrasts
             % -------------------------------------------------------------
