@@ -8,6 +8,15 @@
 % analysis design is created and run for each covariate. 
 % 
 % Test type: one sample t-tests
+%
+% INPUT
+% Comma separated values (csv) file containing the behavioral covariate
+% data in columns.
+% 
+% OUTPUT
+% Estimated GLM, beta and contrast images and Tmaps per covariate. Binary
+% images of the significant voxels in each contrast at specified thresholds
+% are written too. 
 % 
 % -------------------------------------------------------------------------
 % Ruben van den Bosch
@@ -33,7 +42,7 @@ end
 spm pet
 
 iostruct = struct('projectDir', projectDir, ...
-                  'derivBEHdir', fullfile(projectDir, 'data','derivatives','beh', 'RL'), ...
+                  'derivBEHdir', fullfile(projectDir, 'bids','derivatives','beh', 'RL'), ...
                   'derivPETdir', fullfile(projectDir, 'bids','derivatives','pet'), ...
                   'codeDir', fullfile(projectDir,'code','analysis','beh','RL','pet'), ...
                   'batchDir', fullfile(projectDir,'code','analysis','beh','RL','pet'));
@@ -142,7 +151,7 @@ for icov = 1:numel(covs)
             
             % If exists add smoothed normalized Ki img and log subject num
             % .............................................................
-            img = fullfile(settings.io.derivPETdir, sprintf('sub-%.3d',iSubject), 'Ki', 'MRIspace', 'swKi_map.nii');
+            img = fullfile(settings.io.derivPETdir, sprintf('sub-%.3d',iSubject), 'Ki', 'MRIspace', 'swKi_map_brain.nii');
             
             if exist(img, 'file')
                 ki_imgs.subs = [ki_imgs.subs; iSubject];
@@ -293,17 +302,17 @@ for icov = 1:numel(covs)
                 if ~settings.results.mask.use
                     jobs{icon+1}.spm.stats.results.conspec.mask.none = 1;
                     if icon == 1
-                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('sigClust_p%s_%s_binary',p,settings.results.thresholdType);
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_%s_%s_p%s',covname,settings.results.thresholdType,p);
                     elseif icon == 2
-                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_sigClust_p%s_%s_binary',p,settings.results.thresholdType);
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_significant_voxels_%s_%s_p%s',covname,settings.results.thresholdType,p);
                     end
                 else
                     jobs{icon+1}.spm.stats.results.conspec.mask.image.name  = cellstr(settings.results.mask.image);
                     jobs{icon+1}.spm.stats.results.conspec.mask.image.mtype = 0;
                     if icon == 1
-                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('sigClust_p%s_%s_binary_inclMask',p,settings.results.thresholdType);
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_%s_%s_p%s',covname,settings.results.thresholdType,p);
                     elseif icon == 2
-                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_sigClust_p%s_%s_binary_inclMask',p,settings.results.thresholdType);
+                        jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_significant_voxels_%s_%s_p%s_binary',covname,settings.results.thresholdType,p);
                     end
                 end
             end
