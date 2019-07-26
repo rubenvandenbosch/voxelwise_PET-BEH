@@ -42,10 +42,10 @@ end
 spm pet
 
 iostruct = struct('projectDir', projectDir, ...
-                  'derivBEHdir', fullfile(projectDir, 'bids','derivatives','beh', 'RL'), ...
+                  'derivBEHdir', fullfile(projectDir, 'bids','derivatives','beh', '<task_name>'), ...
                   'derivPETdir', fullfile(projectDir, 'bids','derivatives','pet'), ...
-                  'codeDir', fullfile(projectDir,'code','analysis','beh','RL','pet'), ...
-                  'batchDir', fullfile(projectDir,'code','analysis','beh','RL','pet'));
+                  'codeDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'), ...
+                  'batchDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'));
 
 % Subject to run
 % -------------------------------------------------------------------------
@@ -60,7 +60,7 @@ todo.Contrasts_and_ResultsExport    = true;
 % Define csv file with behavioral data to be used as covariates
 % -------------------------------------------------------------------------
 % Make sure the column for subject numbers is named "subject"
-behDataFile = fullfile(iostruct.derivBEHdir, 'allbeh_exOutliers_nativeKi.csv');
+behDataFile = fullfile(iostruct.derivBEHdir, '<file_name>.csv');
 
 % Which scores to use as covariate
 % -------------------------------------------------------------------------
@@ -72,7 +72,7 @@ behDataFile = fullfile(iostruct.derivBEHdir, 'allbeh_exOutliers_nativeKi.csv');
 % covariate.<score1>    = true;
 % covariate.<score2>    = false
 
-covariate.subjective_value        = false;
+covariate.EXAMPLE        = false;
 
 % Settings for results to export
 % -------------------------------------------------------------------------
@@ -96,7 +96,7 @@ settings = struct('io',iostruct, ...
 % END USER INPUT
 % =========================================================================
 
-% Define jobdir
+% Define jobdir where SPM jobs are saved
 dirs.jobs = fullfile(settings.io.codeDir, 'jobs');
 
 % Make dirs if they don't exist
@@ -116,19 +116,13 @@ for icov = 1:numel(covs)
     
     if settings.covariate.(covname)
         
-        if settings.todo.DesignSpecification
-            
         % =================================================================
         % Design Specification
         % =================================================================
-        % Load job
-        % -----------------------------------------------------------------
-        jobTemplate = fullfile(settings.io.batchDir,'design_oneSttest_covariate.m');
-        jobId       = cfg_util('initjob', jobTemplate);
-        inputs      = cell(4,1);
-
+        if settings.todo.DesignSpecification
+            
         % Define inputs
-        % =================================================================
+        % -----------------------------------------------------------------
         % 1. Output directory for SPM.mat
         % 2. Smoothed normalized Ki images
         % 3. Covariate vector
@@ -162,89 +156,86 @@ for icov = 1:numel(covs)
         
         % 3. Get covariate vector
         % -----------------------------------------------------------------
-        behdata = dataset('file', RLdatafile, 'delim', ',','TreatAsEmpty','NA');
+        behdata = dataset('file', behDataFile, 'delim', ',','TreatAsEmpty','NA');
         cov.subs = behdata.subject;
         cov.vec = behdata.(covs{icov});
 
+        % Remove subjects with missing data in covariate vector
+        % .................................................................
+        ix_nans             = find(isnan(cov.vec));
+        cov.subs(ix_nans)   = [];
+        cov.vec(ix_nans)    = [];
+        
         % Keep only cov data for subjects that have a ki img
         % .................................................................
         ix_tokeep = find(ismember(cov.subs, ki_imgs.subs));
-        cov.subs = cov.subs(ix_tokeep);
-        cov.vec = cov.vec(ix_tokeep);
+        cov.subs  = cov.subs(ix_tokeep);
+        cov.vec   = cov.vec(ix_tokeep);
         
-        % Remove subjects with missing data in covariate vector
+        % Keep only Ki data for subjects with available covariate data
         % .................................................................
-        ix_nans = find(isnan(cov.vec));
-        cov.subs(ix_nans)       = [];
-        cov.vec(ix_nans)        = [];
-        ki_imgs.subs(ix_nans)   = [];
-        ki_imgs.imgs(ix_nans)   = [];
+        ix_tokeep    = find(ismember(ki_imgs.subs, cov.subs));
+        ki_imgs.subs = ki_imgs.subs(ix_tokeep);
+        ki_imgs.imgs = ki_imgs.imgs(ix_tokeep);
         
         % Fill in batch
         % -----------------------------------------------------------------
-        inputs{1} = cellstr(outDir);
-        inputs{2} = ki_imgs.imgs;
-        inputs{3} = cov.vec;
-        inputs{4} = covname;
-     
+        clear jobs
+        jobs{1}.spm.stats.factorial_design.dir                       = cellstr(outDir);
+        jobs{1}.spm.stats.factorial_design.des.t1.scans              = ki_imgs.imgs;
+        jobs{1}.spm.stats.factorial_design.cov.c                     = cov.vec;
+        jobs{1}.spm.stats.factorial_design.cov.cname                 = covname;
+        jobs{1}.spm.stats.factorial_design.cov.iCFI                  = 1;
+        jobs{1}.spm.stats.factorial_design.cov.iCC                   = 1;
+        jobs{1}.spm.stats.factorial_design.multi_cov                 = struct('files', {}, 'iCFI', {}, 'iCC', {});
+        jobs{1}.spm.stats.factorial_design.masking.tm.tm_none        = 1;
+        jobs{1}.spm.stats.factorial_design.masking.im                = 1;
+        jobs{1}.spm.stats.factorial_design.masking.em                = {''};
+        jobs{1}.spm.stats.factorial_design.globalc.g_omit            = 1;
+        jobs{1}.spm.stats.factorial_design.globalm.gmsca.gmsca_no    = 1;
+        jobs{1}.spm.stats.factorial_design.globalm.glonorm           = 1;
+
         % Save and run job
-        % =================================================================
-        [~,nm,ext] = fileparts(jobTemplate);
-        jobFile = fullfile(dirs.jobs,[nm,'_',covname,'_',datestr(now,'yyyymmddTHHMMSS'),ext]);
-
-        sts = cfg_util('filljob', jobId, inputs{:});
-        if sts
-            cfg_util('savejob', jobId, jobFile);
-            spm_jobman('run', jobFile, inputs{:});
-        else 
-            error('Error in design specification for covariate %s: job could not be filled',covname)
-        end
+        % -----------------------------------------------------------------
+        jobName = 'design_oneSttest_covariate';
+        run_spm_jobs(jobName,dirs.jobs,jobs);
+        
         end
 
-        if settings.todo.ModelEstimation
-            
         % =================================================================
         % Model Estimation
         % =================================================================
-        % Load job
-        % -----------------------------------------------------------------
-        jobTemplate = fullfile(settings.io.batchDir,'estimate.m');
-        jobId       = cfg_util('initjob', jobTemplate);
-        inputs      = cell(1,1);
-
+        if settings.todo.ModelEstimation
+            
         % Define inputs
-        % =================================================================
+        % -----------------------------------------------------------------
         % 1. SPM.mat file containing the design matrix
         outDir = fullfile(settings.io.derivBEHdir, 'pet', covname);
         SPMmat = fullfile(outDir,'SPM.mat');
 
         % Fill in batch
         % -----------------------------------------------------------------
-        inputs{1} = cellstr(SPMmat);
+        clear jobs
+        jobs{1}.spm.stats.fmri_est.spmmat = cellstr(SPMmat);
+        jobs{1}.spm.stats.fmri_est.write_residuals = 0;
+        jobs{1}.spm.stats.fmri_est.method.Classical = 1;
 
         % Save and run job
-        % =================================================================
-        [~,nm,ext] = fileparts(jobTemplate);
-        jobFile = fullfile(dirs.jobs,[nm,'_',covname,'_',datestr(now,'yyyymmddTHHMMSS'),ext]);
-
-        sts = cfg_util('filljob', jobId, inputs{:});
-        if sts
-            cfg_util('savejob', jobId, jobFile);
-            spm_jobman('run', jobFile, inputs{:});
-        else 
-            error('Error in model estimation for contrast %s: job could not be filled',covname)
-        end
-        end
+        % -----------------------------------------------------------------
+        jobName = 'estimate';
+        run_spm_jobs(jobName,dirs.jobs,jobs);
         
-        if todo.Contrasts_and_ResultsExport
+        end
         
         % =================================================================
         % Create Contrasts And Export Result
         % =================================================================
-        
+        if todo.Contrasts_and_ResultsExport
+            
         % Loop in case multiple results exports at different p-thresholds
         % are requested
         for ip = 1:numel(settings.results.threshold)
+            
             % Prevent erroneous accumulation of jobs
             clear jobs
         
@@ -335,20 +326,30 @@ for icov = 1:numel(covs)
             % Save and run job
             % =============================================================
             jobName = 'Contrast_and_ResultsExport';
-            jobFile = fullfile(dirs.jobs,[jobName,'_',covname,'_',datestr(now,'yyyymmddTHHMMSS'),'.m']);
-
-            % Initialise job
-            jobId = cfg_util('initjob', jobs);
-
-            % If successful save and run job
-            sts = cfg_util('isjob_id', jobId);
-            if sts
-                cfg_util('savejob', jobId, jobFile);
-                cfg_util('run', jobId);
-            else
-                error('Error in initialising job for contrast specification and result export for covariate %s.',covname)
-            end
+            run_spm_jobs(jobName,dirs.jobs,jobs);
         end
         end
     end
+end
+
+function run_spm_jobs(jobName,jobDir,jobs)
+% RUN_SPM_JOBS(jobName,jobDir,jobs)
+% 
+% Subfunction to save and run spm jobs.
+% 
+
+% Filename for save job
+jobFile = fullfile(jobDir,[jobName,'_',datestr(now,'yyyymmddTHHMMSS'),'.m']);
+
+% Initialise job
+jobId = cfg_util('initjob', jobs);
+
+% If successful save and run job
+sts = cfg_util('isjob_id', jobId);
+if sts
+    cfg_util('savejob', jobId, jobFile);
+    cfg_util('run', jobId);
+else
+    error('Error in initialising %s job.',jobName)
+end
 end
