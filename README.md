@@ -19,9 +19,9 @@ images of the significant voxels in each contrast at specified thresholds
 are written too. 
  
 -------------------------------------------------------------------------
-Ruben van den Bosch
-Donders Institute for Brain, Cognition and Behaviour
-Radboud University
-Nijmegen, The Netherlands
-April 2019
+Ruben van den Bosch  
+Donders Institute for Brain, Cognition and Behaviour  
+Radboud University  
+Nijmegen, The Netherlands  
+April 2019  
 
