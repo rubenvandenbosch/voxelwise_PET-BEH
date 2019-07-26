@@ -11,7 +11,7 @@ Test type: one sample t-tests
 
 INPUT  
 Comma separated values (csv) file containing the behavioral covariate
-data in columns.
+data in columns. Include one column with subject numbers.
  
 OUTPUT  
 Estimated GLM, beta and contrast images and Tmaps per covariate. Binary
