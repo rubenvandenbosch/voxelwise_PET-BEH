@@ -156,9 +156,9 @@ for icov = 1:numel(covs)
         
         % 3. Get covariate vector
         % -----------------------------------------------------------------
-        behdata = dataset('file', behDataFile, 'delim', ',','TreatAsEmpty','NA');
+        behdata  = dataset('file', behDataFile, 'delim', ',','TreatAsEmpty','NA');
         cov.subs = behdata.subject;
-        cov.vec = behdata.(covs{icov});
+        cov.vec  = behdata.(covs{icov});
 
         % Remove subjects with missing data in covariate vector
         % .................................................................
@@ -199,7 +199,7 @@ for icov = 1:numel(covs)
         % -----------------------------------------------------------------
         jobName = 'design_oneSttest_covariate';
         run_spm_jobs(jobName,dirs.jobs,jobs);
-        
+
         end
 
         % =================================================================
@@ -276,7 +276,7 @@ for icov = 1:numel(covs)
                 if strcmpi(settings.results.thresholdType,'uncorrected')
                     jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'none';
                 elseif strcmpi(settings.results.thresholdType,'fwe')
-                    jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'fwe';
+                    jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'FWE';
                 end
                 jobs{icon+1}.spm.stats.results.conspec.thresh = settings.results.threshold{ip};
                 jobs{icon+1}.spm.stats.results.conspec.extent = 0;
