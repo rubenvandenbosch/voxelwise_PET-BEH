@@ -298,6 +298,9 @@ switch lower(settings.todo.glmType)
                     case 'Cancel'
                         return
                 end
+            else
+                % Else, make the output directory
+                mkdir(outDir);
             end
             
             % Get covariate vectors
