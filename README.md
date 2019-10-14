@@ -1,6 +1,6 @@
 # voxelwise_PET-BEH
 
-## DESCRIPTION
+DESCRIPTION  
 Code for doing a voxelwise correlation analysis of some score or scores
 with dopamine synthesis capacity.
 
@@ -11,18 +11,18 @@ single regressions are run for each selected covariate separately.
 
 Test type: one sample t-tests
 
-INPUT
+INPUT  
 Comma separated values (csv) file containing the behavioral covariate
 data in columns. Include one column with subject numbers.
 
-OUTPUT
+OUTPUT  
 Estimated GLM, beta and contrast images and Tmaps per covariate. Binary
 images of the significant voxels in each contrast at specified thresholds
 are written too if requested.
 
 -------------------------------------------------------------------------
-Ruben van den Bosch
-Donders Institute for Brain, Cognition and Behaviour
-Radboud University
-Nijmegen, The Netherlands
-April 2019
+Ruben van den Bosch  
+Donders Institute for Brain, Cognition and Behaviour  
+Radboud University  
+Nijmegen, The Netherlands  
+April 2019  
