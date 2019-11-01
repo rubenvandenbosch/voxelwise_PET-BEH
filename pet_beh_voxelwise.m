@@ -98,7 +98,7 @@ covariate.EXAMPLE        = false;
 %                   the negative and combined binary images.
 
 results.thresholdType             = 'uncorrected';
-results.threshold                 = {0.001, 0.01};
+results.threshold                 = {0.001};
 results.includeNegativeContrast   = false;
 results.exportBinary              = true;
 results.exportBinaryNegative      = false;
@@ -450,7 +450,7 @@ end
 function contrasts_and_ResultsExport(settings, SPMmat, covnames, jobDir)
 
 % INPUTS
-% settings
+% settings  : struct with user specified settings
 % SPMmat    : cellstr; path to SPM.mat file
 % covnames  : cellstr; names of covariates to make contrasts for
 % jobDir    : char; path to directory where spm job file is saved
@@ -463,14 +463,9 @@ function contrasts_and_ResultsExport(settings, SPMmat, covnames, jobDir)
 % -------------------------------------------------------------------------
 for ip = 1:numel(settings.results.threshold)
     
-    % Base contrast of zeroes, length is number of covariates + 1 contstant
-    % If negative contrasts are requested length * 2
-    if settings.results.includeNegativeContrast
-        baseCon = zeros(1,numel(covnames)*2+1);
-    else
-        baseCon = zeros(1,numel(covnames)+1);
-    end
-
+    % Base contrast weights vector of zero for all regressors
+    baseCon = zeros(1,numel(covnames)+1);
+    
     % Prevent erroneous accumulation of jobs
     clear jobs
 
@@ -484,7 +479,7 @@ for ip = 1:numel(settings.results.threshold)
         % Define covariate contrast
         jobs{1}.spm.stats.con.consess{icov}.tcon.name     = covnames{icov};
         
-        % Contrast ix is cov number + 1 for the constant column
+        % Index of cov regressor is cov number + 1 for the constant column
         weights         = baseCon;
         weights(icov+1) = 1;
         
@@ -498,13 +493,17 @@ for ip = 1:numel(settings.results.threshold)
         for icov = 1:numel(covnames)
             
             % Define negative covariate contrast
-            jobs{1}.spm.stats.con.consess{icov+1}.tcon.name     = ['negative_' covnames{icov}];
+            % .............................................................
+            % Append to list of contrasts
+            conIx = numel(jobs{1}.spm.stats.con.consess) + 1;
+            jobs{1}.spm.stats.con.consess{conIx}.tcon.name     = ['negative_' covnames{icov}];
             
-            weights = baseCon;
-            weights(1 + numel(covnames) + icov) = -1;
+            % Ix of cov regressor is cov number + 1 for the constant column
+            weights         = baseCon;
+            weights(icov+1) = -1;
             
-            jobs{1}.spm.stats.con.consess{numel(covnames)+icov}.tcon.weights  = weights;
-            jobs{1}.spm.stats.con.consess{numel(covnames)+icov}.tcon.sessrep  = 'none';
+            jobs{1}.spm.stats.con.consess{conIx}.tcon.weights  = weights;
+            jobs{1}.spm.stats.con.consess{conIx}.tcon.sessrep  = 'none';
         end
     end
 
@@ -517,13 +516,7 @@ for ip = 1:numel(settings.results.threshold)
     if settings.results.exportBinary
       
         % Loop over contrasts and add export jobs to joblist
-        if settings.results.includeNegativeContrast && settings.results.exportBinaryNegative
-            numCons = numel(covnames)*2;
-        else
-            numCons = numel(covnames);
-        end
-        
-        for icon = 1:numCons
+        for icon = 1:numel(jobs{1}.spm.stats.con.consess)
             
             % Path to SPM, and empty titlestring
             jobs{icon+1}.spm.stats.results.spmmat = SPMmat;
@@ -563,35 +556,32 @@ for ip = 1:numel(settings.results.threshold)
             if ~(icon > numel(covnames))
                 jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_%s_%s_p%s',covnames{icon},settings.results.thresholdType,p);
             elseif icon > numel(covnames)
-                jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_significant_voxels_%s_%s_p%s',covnames{icon},settings.results.thresholdType,p);
+                jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_significant_voxels_%s_%s_p%s',covnames{icon-numel(covnames)},settings.results.thresholdType,p);
             end
         end
         
-        % If requested created combined images of the regular and negative
-        % binary images
+        % If requested, create combined binary mask of significant clusters
+        % of boththe positive and negative covariate correlation contrast
         % -----------------------------------------------------------------
         if settings.results.exportBinaryCombined
     
             % Output dir
-            [outDir,~,~] = fileparts(SPMmat);
+            [outDir,~,~] = fileparts(SPMmat{1});
             
-            % Create combined binary mask of significant clusters of both
-            % the positive and negative covariate correlation contrast
-            % -------------------------------------------------------------
             jobNr = numel(jobs) + 1;
             
             for icov = 1:numel(covnames)
                 
                 % Find images. Skip if one of the two does not exist
-                pos = spm_select('FPList',outDir,sprintf('^spmT_.*_significant_voxels_%s_%s_p%s.nii$',covnames{icon},settings.results.thresholdType,p));
-                neg = spm_select('FPList',outDir,sprintf('^spmT_.*_negativeCon_significant_voxels_%s_%s_p%s.nii$',covnames{icon},settings.results.thresholdType,p));
+                pos = spm_select('FPList',outDir,sprintf('^spmT_.*_significant_voxels_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
+                neg = spm_select('FPList',outDir,sprintf('^spmT_.*_negativeCon_significant_voxels_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
             
                 if isempty(pos) || isempty(neg)
                     continue
                 end
                 
                 % Output file name
-                outputname = sprintf('combPosNeg_significant_voxels_%s_%s_p%s',covnames{icon},settings.results.thresholdType,p);
+                outputname = sprintf('combPosNeg_significant_voxels_%s_%s_p%s',covnames{icov},settings.results.thresholdType,p);
                 
                 % Fill imcalc job
                 jobs{jobNr}.spm.util.imcalc.input = cellstr(strvcat(pos,neg));
