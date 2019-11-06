@@ -108,17 +108,29 @@ results.exportBinaryCombined      = false;
 results.mask.use      = false;
 results.mask.image    = fullfile(iostruct.codeDir,'single_subj_T1_brain_mask.nii');
 
+% Open SPM GUI? 
+gui = false;
+
 % Combine everything in settings structure
 % -------------------------------------------------------------------------
 settings = struct('io',iostruct, ...
                   'subjectIx',subjectIx, ...
                   'todo',todo, ...
                   'covariate',covariate, ...
-                  'results',results);
+                  'results',results, ...
+                  'gui',gui);
 
 % =========================================================================
 % END USER INPUT
 % =========================================================================
+
+% Load SPM PET defaults and open GUI if set to true
+spm('defaults','PET');
+if settings.gui
+    spm pet
+else
+    spm_jobman('initcfg');
+end
 
 % Define jobdir
 dirs.jobs = fullfile(settings.io.codeDir, 'jobs');
