@@ -563,12 +563,12 @@ for ip = 1:numel(settings.results.threshold)
                 jobs{icon+1}.spm.stats.results.conspec.mask.none = 1;
             end
 
-            % Output base name (SPM prepends spmT_xxx to the name)
+            % Output base name
             % If icon > numel(covnames) it's a negative contrast
             if ~(icon > numel(covnames))
                 jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_%s_%s_p%s',covnames{icon},settings.results.thresholdType,p);
             elseif icon > numel(covnames)
-                jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('negativeCon_significant_voxels_%s_%s_p%s',covnames{icon-numel(covnames)},settings.results.thresholdType,p);
+                jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_negative_%s_%s_p%s',covnames{icon-numel(covnames)},settings.results.thresholdType,p);
             end
         end
         
@@ -586,14 +586,14 @@ for ip = 1:numel(settings.results.threshold)
                 
                 % Find images. Skip if one of the two does not exist
                 pos = spm_select('FPList',outDir,sprintf('^spmT_.*_significant_voxels_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
-                neg = spm_select('FPList',outDir,sprintf('^spmT_.*_negativeCon_significant_voxels_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
+                neg = spm_select('FPList',outDir,sprintf('^spmT_.*_significant_voxels_negative_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
             
                 if isempty(pos) || isempty(neg)
                     continue
                 end
                 
                 % Output file name
-                outputname = sprintf('combPosNeg_significant_voxels_%s_%s_p%s',covnames{icov},settings.results.thresholdType,p);
+                outputname = sprintf('significant_voxels_combinedPosNeg_%s_%s_p%s',covnames{icov},settings.results.thresholdType,p);
                 
                 % Fill imcalc job
                 jobs{jobNr}.spm.util.imcalc.input = cellstr(strvcat(pos,neg));
@@ -612,9 +612,19 @@ for ip = 1:numel(settings.results.threshold)
     end
     
     % Save and run job
-    % =============================================================
+    % =====================================================================
     jobName = 'Contrast_and_ResultsExport';
     run_spm_jobs(jobName,jobDir,jobs);
+    
+    % SPM prepends "spmT_xxxx" to exported files. Remove it from the binary
+    % output files, because they are not Tmaps.
+    % ---------------------------------------------------------------------
+    [outDir,~,~] = fileparts(SPMmat{1});
+    files = dir(fullfile(outDir,'spmT_*significant_voxels*'));
+    for ifile = 1:numel(files)
+        newNm = regexprep(files(ifile).name,'spmT_\d\d\d\d_','');
+        movefile(fullfile(files(ifile).folder,files(ifile).name), fullfile(files(ifile).folder,newNm));
+    end
 end
 end
 
