@@ -19,6 +19,9 @@
 % Estimated GLM, beta and contrast images and Tmaps per covariate. Binary
 % images of the significant voxels in each contrast at specified thresholds
 % are written too if requested.
+% In the specified behavioral derivatives direcotry (derivBEHdir in i/o 
+% structure below in user input) a new directory "pet/<covariateName>" is 
+% created, in which the output is saved.
 % 
 % -------------------------------------------------------------------------
 % Ruben van den Bosch
@@ -41,13 +44,11 @@ elseif ispc
 else
     error('Unknown OS');
 end
-spm pet
 
 iostruct = struct('projectDir', projectDir, ...
                   'derivBEHdir', fullfile(projectDir, 'bids','derivatives','beh', '<task_name>'), ...
                   'derivPETdir', fullfile(projectDir, 'bids','derivatives','pet'), ...
-                  'codeDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'), ...
-                  'batchDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'));
+                  'codeDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'));
 
 % Subject to run
 % -------------------------------------------------------------------------
@@ -105,13 +106,19 @@ results.exportBinaryNegative      = false;
 results.exportBinaryCombined      = false;
 
 % Use inclusive mask?
+% When using an inclusive mask, only the voxels within that mask are
+% displayed in the results window
 results.mask.use      = false;
 results.mask.image    = fullfile(iostruct.codeDir,'single_subj_T1_brain_mask.nii');
 
 % Open SPM GUI? 
 gui = false;
 
-% Combine everything in settings structure
+% =========================================================================
+% END USER INPUT
+% =========================================================================
+
+% Combine user input in settings structure
 % -------------------------------------------------------------------------
 settings = struct('io',iostruct, ...
                   'subjectIx',subjectIx, ...
@@ -119,10 +126,6 @@ settings = struct('io',iostruct, ...
                   'covariate',covariate, ...
                   'results',results, ...
                   'gui',gui);
-
-% =========================================================================
-% END USER INPUT
-% =========================================================================
 
 % Load SPM PET defaults and open GUI if set to true
 spm('defaults','PET');
