@@ -12,7 +12,7 @@
 % Test type: one sample t-tests
 %
 % INPUT
-% Comma separated values (csv) file containing the behavioral covariate
+% A separated values (csv or tsv) file containing the behavioral covariate
 % data in columns. Include one column with subject numbers.
 % 
 % OUTPUT
@@ -48,7 +48,8 @@ end
 iostruct = struct('projectDir', projectDir, ...
                   'derivBEHdir', fullfile(projectDir, 'bids','derivatives','beh', '<task_name>'), ...
                   'derivPETdir', fullfile(projectDir, 'bids','derivatives','pet'), ...
-                  'codeDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'));
+                  'codeDir', fullfile(projectDir,'code','analysis','beh','<task_name>','pet'), ...
+                  'functionDir', fileparts(mfilename('fullpath'))); % dir containing required function create_significant_voxels_binary (included in repo; now set to this mfile's dir)
 
 % Subject to run
 % -------------------------------------------------------------------------
@@ -66,9 +67,9 @@ todo.Contrasts_and_ResultsExport    = true;
 % regression with all predictors in one model?
 % 
 % todo.glmType : char; 'single' OR 'multi'
-todo.glmType = 'multi';
+todo.glmType = 'single';
 
-% Define csv file with behavioral data to be used as covariates
+% Define csv or tsv file with behavioral data to be used as covariates
 % -------------------------------------------------------------------------
 % Make sure the column for subject numbers is named "subject"
 behDataFile = fullfile(iostruct.derivBEHdir, '<file_name>.csv');
@@ -87,29 +88,20 @@ covariate.EXAMPLE        = false;
 
 % Settings for results to export
 % -------------------------------------------------------------------------
-% Type            : 'uncorrected', 'fwe'
-% Threshold       : cell array of thresholds for multiple outputs
-% includeNegative : include the inverse (negative) contrast?
 % exportBinary    : export a binary nifti file for each contrast with the 
 %                   significant voxels in that contrast?
-%                   Indicate whether the inverse (negative) contrast and 
-%                   the combination of positive and negative should also be
-%                   exported.
-%                   includeNegativeContrast must be true in order to export
-%                   the negative and combined binary images.
-
-results.thresholdType             = 'uncorrected';
-results.threshold                 = {0.001};
-results.includeNegativeContrast   = false;
-results.exportBinary              = true;
-results.exportBinaryNegative      = false;
-results.exportBinaryCombined      = false;
-
-% Use inclusive mask?
-% When using an inclusive mask, only the voxels within that mask are
-% displayed in the results window
-results.mask.use      = false;
-results.mask.image    = fullfile(iostruct.codeDir,'single_subj_T1_brain_mask.nii');
+%                   This binary image contains the significant voxels for
+%                   effects in both the positive and negative direction. In
+%                   order to create this image, a negative (inverse)
+%                   contrast is created for each requested regular
+%                   contrast.
+% thresholdType   : 'uncorrected' OR 'fwe'
+% threshold       : cell array of p-value thresholds for multiple outputs
+% extent          : double; minumum cluster size
+results.exportBinary                = true;
+results.significance.thresholdType  = 'uncorrected';
+results.significance.threshold      = {0.001};
+results.significance.extent         = 0;
 
 % Open SPM GUI? 
 gui = false;
@@ -126,6 +118,9 @@ settings = struct('io',iostruct, ...
                   'covariate',covariate, ...
                   'results',results, ...
                   'gui',gui);
+
+% Add function dir to matlab path
+addpath(settings.io.functionDir);
 
 % Load SPM PET defaults and open GUI if set to true
 spm('defaults','PET');
@@ -177,7 +172,13 @@ if settings.todo.DesignSpecification
     
     % Load behavior data file
     % ---------------------------------------------------------------------
-    behdata  = dataset('file', behDataFile, 'delim', ',','TreatAsEmpty','NA');
+    [~,~,ext] = fileparts(behDataFile);
+    if strcmp(ext,'.csv')
+        delim = ',';
+    elseif strcmp(ext,'.tsv')
+        delim = '\t';
+    end
+    behdata  = readtable(behDataFile,'Delimiter',delim,'TreatAsEmpty','NA');
 end
 
 % Switch between individual regressions for each predictor or one multiple
@@ -203,82 +204,84 @@ switch lower(settings.todo.glmType)
         for icov = 1:numel(covs)
             covname = covs{icov};
 
-            if settings.covariate.(covname)
-                
-                % Output Directory
-                % ---------------------------------------------------------
-                outDir = fullfile(settings.io.derivBEHdir, 'pet', covname);
-
-                if settings.todo.DesignSpecification
-                    
-                    % Make output directory if it does not exist
-                    % -----------------------------------------------------
-                    if ~exist(outDir,'dir')
-                        mkdir(outDir)
-                    end
+            % Skip this covariate if it's not set to true in settings
+            if ~settings.covariate.(covname)
+                continue
+            end
             
-                    % Get covariate vector
-                    % -----------------------------------------------------
-                    cov.subs = behdata.subject;
-                    cov.vec  = behdata.(covname);
+            % Output Directory
+            % -------------------------------------------------------------
+            outDir = fullfile(settings.io.derivBEHdir, 'pet', covname);
 
-                    % Keep only cov data for subjects that have a ki img
-                    % .....................................................
-                    ix_tokeep = find(ismember(cov.subs, ki_imgs.subs));
-                    cov.subs  = cov.subs(ix_tokeep);
-                    cov.vec   = cov.vec(ix_tokeep);
+            if settings.todo.DesignSpecification
 
-                    % Remove subjects with missing data in covariate vector
-                    % .....................................................
-                    ix_nans = find(isnan(cov.vec));
-                    cov.subs(ix_nans)       = [];
-                    cov.vec(ix_nans)        = [];
-                    
-                    % Keep only Ki data for those subjects that have 
-                    % covariate data
-                    % .....................................................
-                    ix_tokeep = find(ismember(ki_imgs.subs,cov.subs));
-                    ki_imgs_to_include = ki_imgs.imgs(ix_tokeep);
-                    
-                    % Fill Batch and run
-                    % -----------------------------------------------------
-                    clear jobs
-                    jobs{1}.spm.stats.factorial_design.dir                       = cellstr(outDir);
-                    jobs{1}.spm.stats.factorial_design.des.t1.scans              = ki_imgs_to_include;
-                    jobs{1}.spm.stats.factorial_design.cov.c                     = cov.vec;
-                    jobs{1}.spm.stats.factorial_design.cov.cname                 = covname;
-                    jobs{1}.spm.stats.factorial_design.cov.iCFI                  = 1;
-                    jobs{1}.spm.stats.factorial_design.cov.iCC                   = 1;
-                    jobs{1}.spm.stats.factorial_design.multi_cov                 = struct('files', {}, 'iCFI', {}, 'iCC', {});
-                    jobs{1}.spm.stats.factorial_design.masking.tm.tm_none        = 1;
-                    jobs{1}.spm.stats.factorial_design.masking.im                = 1;
-                    jobs{1}.spm.stats.factorial_design.masking.em                = {''};
-                    jobs{1}.spm.stats.factorial_design.globalc.g_omit            = 1;
-                    jobs{1}.spm.stats.factorial_design.globalm.gmsca.gmsca_no    = 1;
-                    jobs{1}.spm.stats.factorial_design.globalm.glonorm           = 1;
-
-                    % Save and run job
-                    % -----------------------------------------------------
-                    jobName = 'design_oneSttest_singleCovariate';
-                    run_spm_jobs(jobName,dirs.jobs,jobs);
+                % Make output directory if it does not exist
+                % ---------------------------------------------------------
+                if ~exist(outDir,'dir')
+                    mkdir(outDir)
                 end
-                
-                if settings.todo.ModelEstimation
-                    
-                    % Model Estimation
-                    % -----------------------------------------------------
-                    SPMmat = cellstr(fullfile(outDir,'SPM.mat'));
-                    model_estimation(SPMmat,dirs.jobs);
-                    
-                end
-                if settings.todo.Contrasts_and_ResultsExport
-                    
-                    % Contrast and results export
-                    % -----------------------------------------------------
-                    SPMmat = cellstr(fullfile(outDir,'SPM.mat'));
-                    contrasts_and_ResultsExport(settings,SPMmat,cellstr(covname),dirs.jobs);
-                end 
-            end     
+
+                % Get covariate vector
+                % ---------------------------------------------------------
+                cov.subs = behdata.subject;
+                cov.vec  = behdata.(covname);
+
+                % Keep only cov data for subjects that have a ki img
+                % .........................................................
+                ix_tokeep = find(ismember(cov.subs, ki_imgs.subs));
+                cov.subs  = cov.subs(ix_tokeep);
+                cov.vec   = cov.vec(ix_tokeep);
+
+                % Remove subjects with missing data in covariate vector
+                % .........................................................
+                ix_nans = find(isnan(cov.vec));
+                cov.subs(ix_nans)       = [];
+                cov.vec(ix_nans)        = [];
+
+                % Keep only Ki data for those subjects that have covariate 
+                % data
+                % .........................................................
+                ix_tokeep = find(ismember(ki_imgs.subs,cov.subs));
+                ki_imgs_to_include = ki_imgs.imgs(ix_tokeep);
+
+                % Fill Batch and run
+                % ---------------------------------------------------------
+                clear jobs
+                jobs{1}.spm.stats.factorial_design.dir                       = cellstr(outDir);
+                jobs{1}.spm.stats.factorial_design.des.t1.scans              = ki_imgs_to_include;
+                jobs{1}.spm.stats.factorial_design.cov.c                     = cov.vec;
+                jobs{1}.spm.stats.factorial_design.cov.cname                 = covname;
+                jobs{1}.spm.stats.factorial_design.cov.iCFI                  = 1;
+                jobs{1}.spm.stats.factorial_design.cov.iCC                   = 1;
+                jobs{1}.spm.stats.factorial_design.multi_cov                 = struct('files', {}, 'iCFI', {}, 'iCC', {});
+                jobs{1}.spm.stats.factorial_design.masking.tm.tm_none        = 1;
+                jobs{1}.spm.stats.factorial_design.masking.im                = 1;
+                jobs{1}.spm.stats.factorial_design.masking.em                = {''};
+                jobs{1}.spm.stats.factorial_design.globalc.g_omit            = 1;
+                jobs{1}.spm.stats.factorial_design.globalm.gmsca.gmsca_no    = 1;
+                jobs{1}.spm.stats.factorial_design.globalm.glonorm           = 1;
+
+                % Save and run job
+                % ---------------------------------------------------------
+                jobName = 'design_oneSttest_singleCovariate';
+                run_spm_jobs(jobName,dirs.jobs,jobs);
+            end
+
+            if settings.todo.ModelEstimation
+
+                % Model Estimation
+                % ---------------------------------------------------------
+                SPMmat = fullfile(outDir,'SPM.mat');
+                model_estimation(SPMmat,dirs.jobs);
+
+            end
+            if settings.todo.Contrasts_and_ResultsExport
+
+                % Contrast and results export
+                % ---------------------------------------------------------
+                SPMmat = fullfile(outDir,'SPM.mat');
+                contrasts_and_ResultsExport(settings,SPMmat,cellstr(covname),dirs.jobs);
+            end
         end
     case 'multi'
         
@@ -328,20 +331,21 @@ switch lower(settings.todo.glmType)
             for icov = 1:numel(covs)
                 covname = covs{icov};
                 
-                % Add covariate only if set to true in settings
-                if settings.covariate.(covname)
-                    
-                    % Save covariate name in includedRegressors file
-                    fprintf(fid,[covname '\n']);
-                    
-                    % Add to covariates
-                    % .....................................................
-                    cov(ix).subs = behdata.subject;
-                    cov(ix).vec  = behdata.(covname);
-                    cov(ix).name = covname;
-                    
-                    ix = ix+1;
+                % Skip covariate if not set to true in settings
+                if ~settings.covariate.(covname)
+                    continue
                 end
+                
+                % Save covariate name in includedRegressors file
+                fprintf(fid,[covname '\n']);
+
+                % Add to covariates
+                % .....................................................
+                cov(ix).subs = behdata.subject;
+                cov(ix).vec  = behdata.(covname);
+                cov(ix).name = covname;
+
+                ix = ix+1;
             end
             
             % Close includedRegressors file
@@ -414,7 +418,7 @@ switch lower(settings.todo.glmType)
             
             % Model Estimation
             % -------------------------------------------------------------
-            SPMmat = cellstr(fullfile(outDir, 'SPM.mat'));
+            SPMmat = fullfile(outDir, 'SPM.mat');
             model_estimation(SPMmat,dirs.jobs);
                     
         end
@@ -423,7 +427,7 @@ switch lower(settings.todo.glmType)
             
             % Contrast and results export
             % -------------------------------------------------------------
-            SPMmat = cellstr(fullfile(outDir, 'SPM.mat'));
+            SPMmat = fullfile(outDir, 'SPM.mat');
             
             % Covariates to include
             covnames = [];
@@ -445,7 +449,7 @@ function model_estimation(SPMmat,jobDir)
 % Run SPM model estimation
 % 
 % INPUT
-% SPMmat : cellstr; path to SPM.mat file of model to be estimated
+% SPMmat : char; path to SPM.mat file of model to be estimated
 % jobDir : char; directory where spm job file will be saved
 % 
 % =========================================================================
@@ -453,8 +457,8 @@ function model_estimation(SPMmat,jobDir)
 
 % Fill in batch
 clear jobs
-jobs{1}.spm.stats.fmri_est.spmmat = SPMmat;
-jobs{1}.spm.stats.fmri_est.write_residuals = 0;
+jobs{1}.spm.stats.fmri_est.spmmat           = cellstr(SPMmat);
+jobs{1}.spm.stats.fmri_est.write_residuals  = 0;
 jobs{1}.spm.stats.fmri_est.method.Classical = 1;
 
 % Save and run job
@@ -464,170 +468,64 @@ end
 
 function contrasts_and_ResultsExport(settings, SPMmat, covnames, jobDir)
 
+% SUMMARY
+% Function to create the contrasts for the covariates set to true in
+% settings, and if requested export binary images of the significant voxels
+% at the specified significance thresholds (export uses external function).
+% 
 % INPUTS
 % settings  : struct with user specified settings
-% SPMmat    : cellstr; path to SPM.mat file
+% SPMmat    : char; path to SPM.mat file
 % covnames  : cellstr; names of covariates to make contrasts for
 % jobDir    : char; path to directory where spm job file is saved
 % 
 % =========================================================================
 % 
 
-% Loop in case multiple results exports at different p-thresholds are 
-% requested
+% Create contrasts
 % -------------------------------------------------------------------------
-for ip = 1:numel(settings.results.threshold)
+% Prevent erroneous accumulation of jobs
+clear jobs
+
+% Base contrast weights vector of zeroes for all regressors (1 constant +
+% all covariates)
+baseCon = zeros(1,numel(covnames)+1);
+
+% Fill job
+% .........................................................................
+% SPM.mat file
+jobs{1}.spm.stats.con.spmmat = cellstr(SPMmat);
+
+% Loop over requested covariates
+for icov = 1:numel(covnames)
+
+    % Covariate contrast name
+    jobs{1}.spm.stats.con.consess{icov}.tcon.name     = covnames{icov};
+
+    % Contrast weight of 1
+    % Index of cov regressor is cov number + 1 for the constant column
+    weights         = baseCon;
+    weights(icov+1) = 1;
+    jobs{1}.spm.stats.con.consess{icov}.tcon.weights  = weights;
     
-    % Base contrast weights vector of zero for all regressors
-    baseCon = zeros(1,numel(covnames)+1);
-    
-    % Prevent erroneous accumulation of jobs
-    clear jobs
+    % Don't repeat over sessions
+    jobs{1}.spm.stats.con.consess{icov}.tcon.sessrep  = 'none';
+end
 
-    % Create Contrasts
-    % -----------------------------------------------------------------
-    jobs{1}.spm.stats.con.spmmat = SPMmat;
+% Delete existing contrasts
+jobs{1}.spm.stats.con.delete = 1;
 
-    % Loop over requested covariates
-    for icov = 1:numel(covnames)
-        
-        % Define covariate contrast
-        jobs{1}.spm.stats.con.consess{icov}.tcon.name     = covnames{icov};
-        
-        % Index of cov regressor is cov number + 1 for the constant column
-        weights         = baseCon;
-        weights(icov+1) = 1;
-        
-        jobs{1}.spm.stats.con.consess{icov}.tcon.weights  = weights;
-        jobs{1}.spm.stats.con.consess{icov}.tcon.sessrep  = 'none';
-    end
-    
-    if settings.results.includeNegativeContrast
-        
-        % Add inverse contrasts at the end
-        for icov = 1:numel(covnames)
-            
-            % Define negative covariate contrast
-            % .............................................................
-            % Append to list of contrasts
-            conIx = numel(jobs{1}.spm.stats.con.consess) + 1;
-            jobs{1}.spm.stats.con.consess{conIx}.tcon.name     = ['negative_' covnames{icov}];
-            
-            % Ix of cov regressor is cov number + 1 for the constant column
-            weights         = baseCon;
-            weights(icov+1) = -1;
-            
-            jobs{1}.spm.stats.con.consess{conIx}.tcon.weights  = weights;
-            jobs{1}.spm.stats.con.consess{conIx}.tcon.sessrep  = 'none';
-        end
-    end
+% Save and run contrast job
+% .........................................................................
+jobName = 'create_contrasts';
+run_spm_jobs(jobName,jobDir,jobs);
 
-    % Delete existing contrasts
-    jobs{1}.spm.stats.con.delete = 1;
-       
-    % ---------------------------------------------------------------------
-    % Export Result
-    % ---------------------------------------------------------------------
-    if settings.results.exportBinary
-      
-        % Loop over contrasts and add export jobs to joblist
-        for icon = 1:numel(jobs{1}.spm.stats.con.consess)
-            
-            % Path to SPM, and empty titlestring
-            jobs{icon+1}.spm.stats.results.spmmat = SPMmat;
-            jobs{icon+1}.spm.stats.results.conspec.titlestr = '';
-
-            % Contrast index
-            jobs{icon+1}.spm.stats.results.conspec.contrasts = icon;
-
-            % Threshold type, value and min cluster size
-            if strcmpi(settings.results.thresholdType,'uncorrected')
-                jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'none';
-            elseif strcmpi(settings.results.thresholdType,'fwe')
-                jobs{icon+1}.spm.stats.results.conspec.threshdesc = 'FWE';
-            end
-            jobs{icon+1}.spm.stats.results.conspec.thresh = settings.results.threshold{ip};
-            jobs{icon+1}.spm.stats.results.conspec.extent = 0;
-
-            % Export as binary. Define basename. Use inclusive mask if 
-            % applicable
-            % .............................................................
-            jobs{icon+1}.spm.stats.results.units = 1;
-
-            % Get p as string for use in basename
-            p = regexp(num2str(settings.results.threshold{ip}), '\.', 'split');
-            p = p{2};
-
-            % Inclusive mask or not
-            if settings.results.mask.use
-                jobs{icon+1}.spm.stats.results.conspec.mask.image.name  = cellstr(settings.results.mask.image);
-                jobs{icon+1}.spm.stats.results.conspec.mask.image.mtype = 0;
-            else
-                jobs{icon+1}.spm.stats.results.conspec.mask.none = 1;
-            end
-
-            % Output base name
-            % If icon > numel(covnames) it's a negative contrast
-            if ~(icon > numel(covnames))
-                jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_%s_%s_p%s',covnames{icon},settings.results.thresholdType,p);
-            elseif icon > numel(covnames)
-                jobs{icon+1}.spm.stats.results.export{1}.binary.basename = sprintf('significant_voxels_negative_%s_%s_p%s',covnames{icon-numel(covnames)},settings.results.thresholdType,p);
-            end
-        end
-        
-        % If requested, create combined binary mask of significant clusters
-        % of boththe positive and negative covariate correlation contrast
-        % -----------------------------------------------------------------
-        if settings.results.exportBinaryCombined
-    
-            % Output dir
-            [outDir,~,~] = fileparts(SPMmat{1});
-            
-            jobNr = numel(jobs) + 1;
-            
-            for icov = 1:numel(covnames)
-                
-                % Find images. Skip if one of the two does not exist
-                pos = spm_select('FPList',outDir,sprintf('^spmT_.*_significant_voxels_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
-                neg = spm_select('FPList',outDir,sprintf('^spmT_.*_significant_voxels_negative_%s_%s_p%s.nii$',covnames{icov},settings.results.thresholdType,p));
-            
-                if isempty(pos) || isempty(neg)
-                    continue
-                end
-                
-                % Output file name
-                outputname = sprintf('significant_voxels_combinedPosNeg_%s_%s_p%s',covnames{icov},settings.results.thresholdType,p);
-                
-                % Fill imcalc job
-                jobs{jobNr}.spm.util.imcalc.input = cellstr(strvcat(pos,neg));
-                jobs{jobNr}.spm.util.imcalc.output = outputname;
-                jobs{jobNr}.spm.util.imcalc.outdir = cellstr(outDir);
-                jobs{jobNr}.spm.util.imcalc.expression = 'i1 | i2';
-                jobs{jobNr}.spm.util.imcalc.var = struct('name', {}, 'value', {});
-                jobs{jobNr}.spm.util.imcalc.options.dmtx = 0;
-                jobs{jobNr}.spm.util.imcalc.options.mask = 0;
-                jobs{jobNr}.spm.util.imcalc.options.interp = 0;
-                jobs{jobNr}.spm.util.imcalc.options.dtype = 2;
-                
-                jobNr = jobNr + 1;
-            end
-        end
-    end
-    
-    % Save and run job
-    % =====================================================================
-    jobName = 'Contrast_and_ResultsExport';
-    run_spm_jobs(jobName,jobDir,jobs);
-    
-    % SPM prepends "spmT_xxxx" to exported files. Remove it from the binary
-    % output files, because they are not Tmaps.
-    % ---------------------------------------------------------------------
-    [outDir,~,~] = fileparts(SPMmat{1});
-    files = dir(fullfile(outDir,'spmT_*significant_voxels*'));
-    for ifile = 1:numel(files)
-        newNm = regexprep(files(ifile).name,'spmT_\d\d\d\d_','');
-        movefile(fullfile(files(ifile).folder,files(ifile).name), fullfile(files(ifile).folder,newNm));
-    end
+% Export significant voxels as binary images
+% -------------------------------------------------------------------------
+if settings.results.exportBinary
+    % Call external function
+    modality = 'pet';
+    create_significant_voxels_binary(SPMmat,covnames,modality,settings.results.significance)
 end
 end
 
